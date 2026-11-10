@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-concurrency-time"
+version = "0.1.0"
+description = "Reproducible local Codex implementation and integration experiments"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+concurrency-harness = "concurrency_harness.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["concurrency_harness*"]
+

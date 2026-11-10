@@ -1,0 +1,142 @@
+[
+  {
+    "id": "task01",
+    "title": "Finished coffee stock valuation",
+    "model": "Product",
+    "field": "stock_value",
+    "serializer": "product_to_dict",
+    "endpoint": "/api/products",
+    "requirements": "Return a JSON-compatible dict with cases and bags, each the corresponding stock count times its selling price rounded to two decimal places; total is their sum rounded to two places. Use Decimal arithmetic before converting to floats. Zero stock gives 0.0. Do not change existing prices or quantities.",
+    "expected_shared_files": [
+      "app/models.py",
+      "app/api.py",
+      "README.md"
+    ]
+  },
+  {
+    "id": "task02",
+    "title": "Finished coffee restock signals",
+    "model": "Product",
+    "field": "needs_restock",
+    "serializer": "product_to_dict",
+    "endpoint": "/api/products",
+    "requirements": "Return a boolean: active products need restock when cases_in_stock < 5 OR bags_in_stock < 10. Equality is sufficient stock. Inactive products always return false. Keep the thresholds fixed for this workload.",
+    "expected_shared_files": [
+      "app/models.py",
+      "app/api.py",
+      "README.md"
+    ]
+  },
+  {
+    "id": "task03",
+    "title": "Green coffee remaining stock value",
+    "model": "GreenCoffeeLot",
+    "field": "remaining_value_usd",
+    "serializer": "lot_to_dict",
+    "endpoint": "/api/inventory",
+    "requirements": "Return weight_kg_remaining times cost_per_kg_usd as a float rounded to two decimal places using Decimal arithmetic. Zero remaining weight gives 0.0. Do not change the existing is_low behavior.",
+    "expected_shared_files": [
+      "app/models.py",
+      "app/api.py",
+      "README.md"
+    ]
+  },
+  {
+    "id": "task04",
+    "title": "Roast weight loss reporting",
+    "model": "RoastBatch",
+    "field": "weight_loss_pct",
+    "serializer": "batch_to_dict",
+    "endpoint": "/api/roast-batches",
+    "requirements": "Return (green_weight_kg - roasted_weight_kg) / green_weight_kg * 100 rounded to one decimal place. Return None if green weight is zero or roasted weight is None. A recorded roasted weight of zero means 100.0 percent loss. Do not change yield_pct.",
+    "expected_shared_files": [
+      "app/models.py",
+      "app/api.py",
+      "README.md"
+    ]
+  },
+  {
+    "id": "task05",
+    "title": "Order shipment coverage",
+    "model": "Order",
+    "field": "shipment_coverage",
+    "serializer": "order_to_dict",
+    "endpoint": "/api/orders and /api/orders/<id>",
+    "requirements": "Return a dict with ordered_quantity (sum of item quantities), allocated_quantity (sum of cases on delivery_truck shipments only, treating None as zero), and unallocated_quantity (max(ordered minus allocated, 0)). Quantities are integers. All shipments count regardless of status; parcel shipments do not contribute. Empty orders produce three zeros. Preserve existing order fields.",
+    "expected_shared_files": [
+      "app/models.py",
+      "app/api.py",
+      "README.md"
+    ]
+  },
+  {
+    "id": "task06",
+    "title": "Order days overdue",
+    "model": "Order",
+    "field": "days_overdue",
+    "serializer": "order_to_dict",
+    "endpoint": "/api/orders and /api/orders/<id>",
+    "requirements": "Return an integer max((date.today() - due_date).days, 0) for orders with a due date unless status is delivered or cancelled. Return zero for those terminal statuses or missing due dates. Compute dynamically on each access. Preserve is_overdue.",
+    "expected_shared_files": [
+      "app/models.py",
+      "app/api.py",
+      "README.md"
+    ]
+  },
+  {
+    "id": "task07",
+    "title": "Customer delivered revenue",
+    "model": "Customer",
+    "field": "delivered_revenue",
+    "serializer": "customer_to_dict",
+    "endpoint": "/api/accounts and /api/accounts/<id>",
+    "requirements": "Return the sum of quantity times unit_price for items in delivered orders only, rounded to two decimal places as a float. Calculate with Decimal arithmetic. Exclude all other statuses. No delivered orders returns 0.0; compute from current relationships rather than storing a column.",
+    "expected_shared_files": [
+      "app/models.py",
+      "app/api.py",
+      "README.md"
+    ]
+  },
+  {
+    "id": "task08",
+    "title": "Customer active subscription quantities",
+    "model": "Customer",
+    "field": "active_subscription_quantity",
+    "serializer": "customer_to_dict",
+    "endpoint": "/api/accounts and /api/accounts/<id>",
+    "requirements": "Return the integer sum of quantity across active subscriptions only. Paused and cancelled subscriptions contribute zero; frequency and product do not affect this raw quantity count. No subscriptions returns zero.",
+    "expected_shared_files": [
+      "app/models.py",
+      "app/api.py",
+      "README.md"
+    ]
+  },
+  {
+    "id": "task09",
+    "title": "Truck shipment capacity utilization",
+    "model": "Shipment",
+    "field": "capacity_utilization_pct",
+    "serializer": "shipment_to_dict",
+    "endpoint": "/api/shipments and nested order detail shipments",
+    "requirements": "For delivery_truck shipments with an assigned trucking service having capacity_cases > 0 and cases not None, return cases / capacity_cases * 100 rounded to one decimal place. Return None otherwise, including parcels with a trucking service assigned. Zero cases gives 0.0 and overcapacity may exceed 100.0.",
+    "expected_shared_files": [
+      "app/models.py",
+      "app/api.py",
+      "README.md"
+    ]
+  },
+  {
+    "id": "task10",
+    "title": "Subscription normalized monthly demand",
+    "model": "Subscription",
+    "field": "monthly_quantity",
+    "serializer": "subscription_to_dict",
+    "endpoint": "/api/subscriptions and nested account detail subscriptions",
+    "requirements": "Return active subscription quantity normalized to a month: weekly quantity * 52 / 12, biweekly quantity * 26 / 12, monthly quantity unchanged. Round to two decimal places as a float. Paused/cancelled or an unknown frequency return 0.0. Do not change frequency/status transitions.",
+    "expected_shared_files": [
+      "app/models.py",
+      "app/api.py",
+      "README.md"
+    ]
+  }
+]

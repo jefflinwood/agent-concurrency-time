@@ -1,0 +1,31 @@
+name: Python checks
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  harness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install pytest==8.4.2
+      - run: python -m unittest discover -s tests -v
+      - run: python -m concurrency_harness.cli plan > /tmp/plan.json
+  workload:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Clone pinned workload
+        run: |
+          git clone https://github.com/jefflinwood/ridgeline.git /tmp/ridgeline
+          git -C /tmp/ridgeline checkout "$(python -c 'import json; print(json.load(open("benchmark/config.json"))["revision"])')"
+      - run: python -m pip install -r /tmp/ridgeline/requirements-dev.txt -c benchmark/constraints.txt
+      - name: Verify baseline and acceptance contracts
+        run: python -m tests.verify_workload --repository /tmp/ridgeline
