@@ -92,7 +92,7 @@ completion criterion is functional acceptance plus regression tests.
 
 ## Run
 
-Prerequisites: Git, Python 3.12, the configured Codex CLI version, working Codex
+Prerequisites: Git, Python 3.11 or later, the configured Codex CLI version, working Codex
 authentication, network access to clone and install packages, and access to the
 configured Terra model. The harness itself uses only Python's standard library.
 `--ignore-user-config` avoids inherited user model/config defaults; credentials
@@ -125,9 +125,17 @@ Do not mix configurations within an output directory. To use a local source
 for offline development, change `repository` to its absolute path in a separate
 config; this changes the recorded provenance. Each run still makes a fresh clone.
 
+The default `"python": null` uses the exact interpreter launching the harness
+(`sys.executable`), so `python3 -m concurrency_harness.cli run ...` uses that
+Python to create each run's virtual environment. To select a specific interpreter,
+set `"python"` to an executable such as `"python3.12"` or an absolute path.
+Missing executables fail with an actionable error before cloning; explicit
+selections never silently fall back. The resolved executable is saved in the
+experiment config and its version in run metadata. Keep it fixed across trials.
+
 The CLI version is checked exactly. Constraints pin package versions from the
 available Ridgeline environment; installed versions are recorded with `pip freeze
---all`. The configured Python 3.12/Linux path is exercised by CI; local validation
+--all`. Python 3.12 on Linux is configured in CI; local validation
 was performed with Python 3.14. Packages, model access, public SHA availability,
 and the real Codex subprocess must pass preflight before collecting results.
 Constraints are version pins, not a wheel archive or package hash lock. Preserve

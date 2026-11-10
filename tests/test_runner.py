@@ -56,6 +56,33 @@ class SimulatedRun(Run):
 
 
 class HarnessTests(unittest.TestCase):
+    def test_default_interpreter_creates_a_working_venv(self):
+        config, tasks = load_config("benchmark/config.json")
+        self.assertEqual(config["python"], sys.executable)
+        with tempfile.TemporaryDirectory() as directory:
+            run = Run(Path(directory) / "run", config, tasks, 1, 1)
+            run.checked([config["python"], "-m", "venv", "--without-pip", run.python.parent.parent])
+            version = run.checked([run.python, "-c", "import platform; print(platform.python_version())"])
+            import platform
+            self.assertEqual(version, platform.python_version())
+
+    def test_explicit_missing_interpreter_fails_before_clone(self):
+        config, tasks = load_config("benchmark/config.json")
+        with tempfile.TemporaryDirectory() as directory:
+            config["python"] = str(Path(directory) / "missing-python")
+            config_path = Path(directory) / "config.json"
+            config_path.write_text(json.dumps(config))
+            explicit, _ = load_config(config_path)
+            self.assertEqual(explicit["python"], config["python"])
+            run = Run(Path(directory) / "run", explicit, tasks, 1, 1)
+            with patch.object(run, "command") as command:
+                result = run.run()
+                command.assert_not_called()
+            self.assertEqual(result["status"], "failed")
+            self.assertIn('Set "python": null', result["error"])
+            self.assertFalse(run.repo.exists())
+            self.assertEqual(json.loads((run.root / "summary.json").read_text())["status"], "failed")
+
     def make_source(self, root):
         source = root / "source"
         source.mkdir()

@@ -11,6 +11,7 @@ import random
 import shutil
 import signal
 import subprocess
+import sys
 import threading
 import time
 import traceback
@@ -34,6 +35,10 @@ def schedule(config):
 def load_config(path):
     path = Path(path).resolve()
     config = json.loads(path.read_text())
+    if config.get("python") is None:
+        config["python"] = sys.executable
+    elif not isinstance(config["python"], str) or not config["python"].strip():
+        raise ValueError("python must be null or an interpreter executable/path")
     for key in ("tasks", "acceptance", "constraints"):
         config[key] = str((path.parent / config[key]).resolve())
     if len(config["revision"]) != 40 or any(c not in "0123456789abcdef" for c in config["revision"]):
@@ -120,6 +125,14 @@ class Run:
         (self.root / "config.json").write_text(json.dumps(self.config, indent=2))
         (self.root / "tasks.json").write_text(json.dumps(self.tasks, indent=2))
         self.event("setup_started", agents=self.agents, trial=self.trial)
+        interpreter = shutil.which(self.config["python"])
+        if interpreter is None:
+            raise RuntimeError(
+                f"Configured Python interpreter {self.config['python']!r} was not found. "
+                'Set "python": null to use the interpreter launching the harness, '
+                'or set "python" to an installed executable/path in your config.'
+            )
+        self.event("python_selected", executable=interpreter)
         self.checked(["git", "clone", self.config["repository"], self.repo], self.root)
         self.git("checkout", "-B", "main", self.config["revision"])
         self.git("config", "user.email", "benchmark@example.invalid")
@@ -129,7 +142,7 @@ class Run:
         self.git("config", "rerere.enabled", "false")
         with (self.repo / ".git/info/exclude").open("a") as stream:
             stream.write("\n.pytest_cache/\n.coverage\nhtmlcov/\n")
-        self.checked([self.config["python"], "-m", "venv", self.python.parent.parent], self.root)
+        self.checked([interpreter, "-m", "venv", self.python.parent.parent], self.root)
         shutil.copyfile(self.config["constraints"], self.root / "constraints.txt")
         self.checked([self.python, "-m", "pip", "install", "-r", "requirements-dev.txt",
                       "-c", self.root / "constraints.txt"], self.repo)

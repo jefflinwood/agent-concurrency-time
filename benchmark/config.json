@@ -9,7 +9,7 @@
   "agent_timeout_seconds": 1800,
   "command_timeout_seconds": 600,
   "integration_attempts": 2,
-  "python": "python3.12",
+  "python": null,
   "codex": "codex",
   "codex_version": "codex-cli 0.167.0",
   "tasks": "tasks.json",
