@@ -8,7 +8,7 @@ import time
 import unittest
 from unittest.mock import patch
 
-from concurrency_harness.runner import Run, digest, load_config, schedule
+from concurrency_harness.runner import Run, digest, load_config, provenance, schedule
 from concurrency_harness.cli import report
 
 
@@ -197,6 +197,39 @@ class HarnessTests(unittest.TestCase):
             result = report(directory)
             self.assertEqual(result["groups"][0]["failures"], 1)
             self.assertEqual(len(result["runs"]), 2)
+
+    def test_results_preserve_observed_versions_and_requested_model(self):
+        config, tasks = load_config("benchmark/config.json")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            run = Run(root / "old-run", config, tasks, 3, 1)
+            metadata = dict(revision="a" * 40, codex_version="codex-cli historical")
+            (run.root / "config.json").write_text(json.dumps(config))
+            (run.root / "metadata.json").write_text(json.dumps(metadata))
+            # Older summaries lack provenance; report must recover it from artifacts.
+            (run.root / "summary.json").write_text(json.dumps(dict(agents=3, status="failed")))
+            result = report(root)
+            recorded = result["runs"][0]["provenance"]
+            self.assertEqual(recorded["baseline_commit"], "a" * 40)
+            self.assertEqual(recorded["requested_baseline_commit"], config["revision"])
+            self.assertEqual(recorded["model"], config["model"])
+            self.assertEqual(recorded["codex_version"], "codex-cli historical")
+            self.assertEqual(result["provenance"], [recorded])
+            self.assertEqual(run.summary["provenance"], provenance(config))
+            self.assertIsNone(run.summary["provenance"]["baseline_commit"])
+            self.assertIsNone(run.summary["provenance"]["codex_version"])
+
+    def test_report_preserves_partial_setup_observations(self):
+        config, tasks = load_config("benchmark/config.json")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            run = Run(root / "partial-run", config, tasks, 1, 1)
+            run.summary["provenance"]["baseline_commit"] = "b" * 40
+            run.summary["status"] = "failed"
+            (run.root / "summary.json").write_text(json.dumps(run.summary))
+            result = report(root)
+            self.assertEqual(result["runs"][0]["provenance"]["baseline_commit"], "b" * 40)
+            self.assertIsNone(result["runs"][0]["provenance"]["codex_version"])
 
 
 if __name__ == "__main__":

@@ -22,6 +22,18 @@ def digest(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
+def provenance(config, metadata=None):
+    """Keep requested settings distinct from observed checkout/tool versions."""
+    metadata = metadata or {}
+    return dict(repository=config.get("repository"),
+                requested_baseline_commit=config.get("revision"),
+                baseline_commit=metadata.get("revision"),
+                model=config.get("model"),
+                reasoning_effort=config.get("reasoning_effort"),
+                requested_codex_version=config.get("codex_version"),
+                codex_version=metadata.get("codex_version"))
+
+
 def schedule(config):
     rng = random.Random(config["seed"])
     rows = []
@@ -74,7 +86,8 @@ class Run:
         self.validations = {}
         self.task_map = {t["id"]: t for t in tasks}
         self.work_started = None
-        self.summary = dict(agents=agents, trial=trial, status="running", tasks=self.results)
+        self.summary = dict(agents=agents, trial=trial, status="running", tasks=self.results,
+                            provenance=provenance(config))
 
     def event(self, kind, **fields):
         with self.lock:
@@ -135,6 +148,7 @@ class Run:
         self.event("python_selected", executable=interpreter)
         self.checked(["git", "clone", self.config["repository"], self.repo], self.root)
         self.git("checkout", "-B", "main", self.config["revision"])
+        self.summary["provenance"]["baseline_commit"] = self.git("rev-parse", "HEAD")
         self.git("config", "user.email", "benchmark@example.invalid")
         self.git("config", "user.name", "Concurrency Benchmark")
         self.git("config", "commit.gpgsign", "false")
@@ -160,6 +174,7 @@ class Run:
                         tasks_sha256=digest(self.root / "tasks.json"),
                         harness_sha256={p.name: digest(p) for p in Path(__file__).parent.glob("*.py")})
         (self.root / "metadata.json").write_text(json.dumps(metadata, indent=2))
+        self.summary["provenance"] = provenance(self.config, metadata)
         if metadata["codex_version"] != self.config["codex_version"]:
             raise RuntimeError(f"Expected {self.config['codex_version']}, got {metadata['codex_version']}")
         if not self.validate(self.repo, [], "baseline"):

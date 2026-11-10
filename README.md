@@ -164,6 +164,16 @@ branch include other integrated work; use `agent_edits` for files actually edite
 during a repair invocation. File edits and retries are rework proxies, not a
 semantic measure of wasted effort.
 
+Each run's `summary.json` and report entry also includes `provenance`: the source
+repository, requested and observed baseline commit, exact model identifier passed
+to Codex, reasoning effort, and requested and observed Codex CLI versions.
+The baseline commit is distinct from the final integrated commit. Model identity
+records the explicit `--model` selection; it does not claim an independently
+verified server-side model snapshot. Observed fields remain null if setup failed
+before they could be captured. The aggregate report lists all distinct provenance
+records so differing environments remain visible. Regenerating reports for older
+runs reads their saved config and metadata, never the current benchmark config.
+
 Time limits are 30 minutes per agent invocation and 10 minutes per other command.
 Timeouts kill the subprocess process group and retain its logs. All ordinary
 failures remain in the dataset, including setup failures that have no work time.

@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 import statistics
 
-from .runner import Run, digest, load_config, schedule
+from .runner import Run, digest, load_config, provenance, schedule
 
 
 def measurements(path):
@@ -36,8 +36,16 @@ def measurements(path):
 
 
 def report(root):
-    records = [dict(json.loads(p.read_text()), measurements=measurements(p))
-               for p in sorted(Path(root).glob("*/summary.json"))]
+    records = []
+    for path in sorted(Path(root).glob("*/summary.json")):
+        record = json.loads(path.read_text())
+        def read_artifact(name):
+            artifact = path.parent / name
+            return json.loads(artifact.read_text()) if artifact.exists() else {}
+        recorded = provenance(read_artifact("config.json"), read_artifact("metadata.json"))
+        record["provenance"] = {**recorded, **record.get("provenance", {})}
+        record["measurements"] = measurements(path)
+        records.append(record)
     groups = []
     for n in sorted({r["agents"] for r in records}):
         runs = [r for r in records if r["agents"] == n]
@@ -46,7 +54,11 @@ def report(root):
                            failures=sum(r["status"] != "passed" for r in runs),
                            successful_work_seconds=times,
                            median_successful_work_seconds=statistics.median(times) if times else None))
-    return dict(groups=groups, runs=records)
+    variants = []
+    for record in records:
+        if record["provenance"] not in variants:
+            variants.append(record["provenance"])
+    return dict(provenance=variants, groups=groups, runs=records)
 
 
 def main():
