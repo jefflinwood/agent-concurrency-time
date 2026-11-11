@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 from concurrency_harness.runner import Run, digest, load_config, provenance, schedule
 from concurrency_harness.cli import report
+from concurrency_harness.persistent import PersistentRun
 
 
 class SimulatedRun(Run):
@@ -55,7 +56,89 @@ class SimulatedRun(Run):
                 self.active -= 1
 
 
+class SimulatedPersistentRun(PersistentRun):
+    setup = SimulatedRun.setup
+
+    def agent(self, worktree, prompt, role, task_id, attempt=1):
+        self.roles.append(role)
+        self.peak = max(self.peak, 1)
+        active = set(self.task_map)
+        if role == "implementation" or self.config.get("persistent_never_repairs"):
+            active.remove("task10")  # Final contract failure is repaired by the same session.
+        (worktree / "features.py").write_text(f"ACTIVE = {sorted(active)!r}\n")
+        log = self.root / f"{role}-{attempt}.jsonl"
+        log.write_text(json.dumps(dict(type="thread.started", thread_id="one-persistent-thread")) + "\n")
+        self.capture_session(dict(stdout=str(log), command_id=len(self.roles)))
+        return True
+
+
 class HarnessTests(unittest.TestCase):
+    def test_persistent_failed_repairs_leave_main_unchanged(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source, revision = self.make_source(root)
+            config, tasks = load_config("benchmark/persistent.json")
+            config.update(repository=str(source), revision=revision, persistent_never_repairs=True)
+            run = SimulatedPersistentRun(root / "run", config, tasks, 1, 1)
+            result = run.run()
+            self.assertEqual(result["status"], "failed", result.get("error", result))
+            self.assertEqual(result["integrated_tasks"], [])
+            self.assertEqual(result["final_commit"], revision)
+            self.assertEqual(result["integration_attempts"], 2)
+            self.assertEqual(run.roles, ["implementation", "integration", "integration"])
+
+    def test_persistent_full_workload_and_integration_keep_one_session(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source, revision = self.make_source(root)
+            config, tasks = load_config("benchmark/persistent.json")
+            config.update(repository=str(source), revision=revision)
+            run = SimulatedPersistentRun(root / "run", config, tasks, 1, 1)
+            result = run.run()
+            self.assertEqual(result["status"], "passed", result.get("error", result))
+            self.assertEqual(result["treatment"], "persistent_workload")
+            self.assertEqual(result["session_id"], "one-persistent-thread")
+            self.assertEqual(run.roles, ["implementation", "integration"])
+            self.assertEqual(len(result["integrated_tasks"]), 10)
+            self.assertFalse(result["implementation_validation_passed"])
+            self.assertFalse(result["tasks"]["task10"]["implementation_acceptance_passed"])
+            events = [json.loads(line) for line in (run.root / "events.jsonl").read_text().splitlines()]
+            sessions = [e for e in events if e["event"] == "session_observed"]
+            self.assertEqual([e["resumed"] for e in sessions], [False, True])
+
+    def test_persistent_command_resumes_exact_session_and_rejects_replacement(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config, tasks = load_config("benchmark/persistent.json")
+            run = PersistentRun(Path(directory) / "run", config, tasks, 1, 1)
+            first = run.agent_argv(run.repo)
+            self.assertNotIn("--ephemeral", first)
+            self.assertNotIn("resume", first)
+            log = run.root / "session.jsonl"
+            log.write_text(json.dumps(dict(type="thread.started", thread_id="same-session")))
+            result = dict(stdout=str(log), command_id=1)
+            run.capture_session(result)
+            resumed = run.agent_argv(run.repo)
+            self.assertEqual(resumed[-3:], ["resume", "same-session", "-"])
+            self.assertNotIn("--last", resumed)
+            log.write_text(json.dumps(dict(type="thread.started", thread_id="replacement")))
+            with self.assertRaisesRegex(RuntimeError, "session changed"):
+                run.capture_session(result)
+            log.write_text("{}\n")
+            with self.assertRaisesRegex(RuntimeError, "exactly one"):
+                run.capture_session(result)
+
+    def test_reports_keep_persistent_and_fresh_one_agent_separate(self):
+        with tempfile.TemporaryDirectory() as directory:
+            for treatment in ("fresh_per_task", "persistent_workload"):
+                folder = Path(directory) / treatment
+                folder.mkdir()
+                (folder / "summary.json").write_text(json.dumps(dict(
+                    treatment=treatment, agents=1, status="passed", work_seconds=10)))
+            result = report(directory)
+            self.assertEqual(len(result["groups"]), 2)
+            self.assertEqual({g["treatment"] for g in result["groups"]}, {"fresh_per_task", "persistent_workload"})
+            self.assertTrue(all(g["runs"] == 1 for g in result["groups"]))
+
     def test_default_interpreter_creates_a_working_venv(self):
         config, tasks = load_config("benchmark/config.json")
         self.assertEqual(config["python"], sys.executable)

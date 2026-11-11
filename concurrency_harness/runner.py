@@ -60,6 +60,11 @@ def load_config(path):
             raise ValueError(f"{key} must be a positive integer")
     if not config["concurrency"] or any(type(n) is not int or n < 1 for n in config["concurrency"]):
         raise ValueError("concurrency levels must be positive integers")
+    treatment = config.get("treatment", "fresh_per_task")
+    if treatment not in ("fresh_per_task", "persistent_workload"):
+        raise ValueError("unknown treatment")
+    if treatment == "persistent_workload" and config["concurrency"] != [1]:
+        raise ValueError("persistent_workload requires concurrency [1]")
     tasks = json.loads(Path(config["tasks"]).read_text())
     if len(tasks) != 10 or len({t["id"] for t in tasks}) != 10:
         raise ValueError("workload must contain ten uniquely identified tasks")
@@ -87,7 +92,8 @@ class Run:
         self.task_map = {t["id"]: t for t in tasks}
         self.work_started = None
         self.summary = dict(agents=agents, trial=trial, status="running", tasks=self.results,
-                            provenance=provenance(config))
+                            provenance=provenance(config),
+                            treatment=config.get("treatment", "fresh_per_task"))
 
     def event(self, kind, **fields):
         with self.lock:
@@ -196,6 +202,14 @@ class Run:
         self.validations[label] = result
         return result["returncode"] == 0 and not result["timed_out"]
 
+    def agent_argv(self, worktree):
+        return [self.config["codex"], "exec", "--ignore-user-config", "--ephemeral", "--json",
+                "--model", self.config["model"], "-c", f'model_reasoning_effort="{self.config["reasoning_effort"]}"',
+                "-c", "features.multi_agent=false", "--sandbox", "workspace-write", "-C", worktree, "-"]
+
+    def capture_session(self, result):
+        pass
+
     def agent(self, worktree, prompt, role, task_id, attempt=1):
         prompt_path = self.root / f"{task_id}-{role}-{attempt}.prompt.txt"
         prompt_path.write_text(prompt)
@@ -203,9 +217,7 @@ class Run:
         env["PATH"] = str(self.python.parent) + os.pathsep + env.get("PATH", "")
         env["PYTHONDONTWRITEBYTECODE"] = "1"
         env["PYTEST_ADDOPTS"] = "-p no:cacheprovider"
-        argv = [self.config["codex"], "exec", "--ignore-user-config", "--ephemeral", "--json",
-                "--model", self.config["model"], "-c", f'model_reasoning_effort="{self.config["reasoning_effort"]}"',
-                "-c", "features.multi_agent=false", "--sandbox", "workspace-write", "-C", worktree, "-"]
+        argv = self.agent_argv(worktree)
         def snapshot():
             paths = self.git("ls-files", "--cached", "--others", "--exclude-standard", cwd=worktree).splitlines()
             return {p: digest(worktree / p) for p in paths if (worktree / p).is_file()}
@@ -214,6 +226,7 @@ class Run:
         result = self.command(argv, self.root, env=env, stdin=prompt,
                               timeout=self.config["agent_timeout_seconds"])
         self.event("agent_finished", role=role, task_id=task_id, attempt=attempt, **result)
+        self.capture_session(result)
         after = snapshot()
         self.event("agent_edits", role=role, task_id=task_id, attempt=attempt,
                    changed_files=sorted(p for p in before.keys() | after.keys() if before.get(p) != after.get(p)))

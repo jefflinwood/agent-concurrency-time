@@ -1,0 +1,21 @@
+{
+  "repository": "https://github.com/jefflinwood/ridgeline.git",
+  "revision": "353c3ccdf3acdaae9acae78b5132241061b5decc",
+  "model": "gpt-6.1-terra",
+  "reasoning_effort": "medium",
+  "concurrency": [
+    1
+  ],
+  "trials": 3,
+  "seed": 20261110,
+  "agent_timeout_seconds": 1800,
+  "command_timeout_seconds": 600,
+  "integration_attempts": 2,
+  "python": null,
+  "codex": "codex",
+  "codex_version": "codex-cli 0.167.0",
+  "tasks": "tasks.json",
+  "acceptance": "acceptance.py",
+  "constraints": "constraints.txt",
+  "treatment": "persistent_workload"
+}

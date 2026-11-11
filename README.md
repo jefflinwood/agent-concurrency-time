@@ -189,6 +189,59 @@ these inputs pinned. Record deviations when replicating on another machine.
 
 ## Verification and extension
 
+### Follow-up treatment: one persistent agent
+
+The original matrix is `fresh_per_task`: even with one slot, each task has a
+fresh implementation session and a fresh integration session. The separate
+`persistent_workload` treatment gives one fresh session the full ten-task list,
+then resumes that **exact session ID** for integration and any repair attempts.
+It never uses `--last`, never forks, and fails if a different session is observed.
+Each trial starts a new session and a fresh clone. Subagents remain disabled.
+CLI process invocations and logical sessions are distinct: a successful trial
+normally has two invocations but one session. Session IDs and continuation
+events are recorded; the usual prompts, JSONL, timing, tests, and patches remain.
+Normal Codex context compaction is allowed and is not treated as a new agent.
+
+```sh
+# Preview the three-trial follow-up without launching agents:
+python3 -m concurrency_harness.cli plan --config benchmark/persistent.json
+# Pilot only (use a separate output directory):
+python3 -m concurrency_harness.cli run --config benchmark/persistent.json --run-index 0 --output results/persistent-pilot
+# Three follow-up trials, separate from the original matrix:
+python3 -m concurrency_harness.cli run --config benchmark/persistent.json --output results/persistent-001
+# Compare without modifying the archived original results:
+python3 -m concurrency_harness.cli report --output results/persistent-001 --compare-with results/experiment-001
+```
+
+The same baseline SHA, model, reasoning effort, CLI version, dependencies, task
+contracts, immutable tests, and final completion gate apply. One implementation
+invocation receives all tasks in ID order and owns all code changes. The harness
+then records per-task acceptance outcomes and a combined regression gate,
+commits the workload, and merges it into a candidate in the same worktree path.
+The same session reviews and repairs the entire integration. The harness still
+executes Git operations mechanically; no second agent performs integration.
+`main` advances only after all ten contracts and regression tests pass.
+
+There are at most two integration attempts for the whole workload, in the same
+session. Failed initial functional checks are recorded and supplied to integration
+for repair; a nonzero agent exit, timeout, missing session ID, or changed session
+ID ends the workload without replacing the actor. The 30-minute agent limit
+applies per invocation, including the full-workload implementation. All ten tasks
+share the final integrated commit; per-task completion times are not inferred
+from the agent's narrative. Reports group by treatment **and** concurrency.
+Raw token usage from resumed turns is preserved, without assuming whether those
+CLI usage fields are incremental or cumulative across the session.
+
+This is a full-workload comparison, not a controlled test of memory alone. It
+also removes per-task handoffs, gives the full workload upfront, replaces ten
+task branches with one workload branch, and changes validation/retry boundaries.
+Conflicts between independent task branches are absent by construction. The
+follow-up runs occur after the randomized original matrix, so temporal effects
+are another limitation. Keep the original twelve runs and pilots unchanged and
+identify this arm explicitly when publishing comparisons.
+
+### Harness checks
+
 ```sh
 python3 -m pip install pytest==8.4.2
 python3 -m unittest discover -s tests -v
